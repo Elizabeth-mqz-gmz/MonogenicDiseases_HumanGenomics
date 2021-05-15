@@ -1,0 +1,79 @@
+---
+title: "Proyecto mendelian"
+author: "Alfredo Varela"
+date: "5/14/2021"
+output: html_document
+---
+
+```{r}
+library(dplyr)
+library(biomaRt)
+library(ggplot2)
+```
+
+
+
+Leyendo el archivo de omim que contiene los fenotipos e identificadores de ENSEMBL
+
+```{r}
+# Reading the file 
+omim_genes<- read.table("data/genemap2.txt", sep = "\t", header= FALSE, fill =TRUE)
+# Creating the header 
+colnames(omim_genes) <- c("chromosome",	"genomic_position_start", "genomic_position_end", "cyto_location","computed_cyto_location", "mim_number","gene_symbols","gene_name","approved_symbol","gene_id","ensembl_gene_id","comments","phenotypes","mouse_geneSymbol/ID")
+
+```
+
+Filtar enfermedades mendelianas 
+
+```{r}
+mendelian_omim_genes<- omim_genes %>%
+  # Looking for autosomal dominant, autosomal recessive, X-linked dominaant
+   filter(grepl("Autosomal|X-linked|Y-linked", phenotypes))
+
+# Checking duplicated values from mim id
+head(unique(mendelian_omim_genes$mim_number[duplicated(mendelian_omim_genes$mim_number)]))
+# Checking duplicated diseases
+head(unique(query_request_3$phenotype_description[duplicated(query_request_3$phenotype_description)]))
+
+```
+
+Búsqueda en ENSEMBL por medio del MIM number 
+
+```{r}
+# conncet to genes database
+ensembl <- useEnsembl(biomart = "genes")
+ensembl
+
+#	Check available data sets, hsapiens_gene_ensembl corresponde a Human genes (GRCh38.p13)
+datasets <- listDatasets(ensembl)
+head(datasets)
+
+# accesing homo sapines genes
+ensembl <- useDataset(dataset = "hsapiens_gene_ensembl", mart = ensembl)
+
+# filters to apply to my query 
+listFilters(ensembl)
+# output attributes i want 
+listAttributes(ensembl)
+
+#query_request_1<- getBM(attributes = c("ensembl_gene_id","chromosome_name","gene_biotype"), filters = c("ensembl_gene_id"),values = mendelian_omim_genes$ensembl_gene_id, mart = ensembl)
+
+#query_request_2 <- getBM(attributes=c("ensembl_gene_id","chromosome_name","gene_biotype","phenotype_description"),filters=c("ensembl_gene_id"),values=mendelian_omim_genes$ensembl_gene_id, mart= ensembl)
+
+query_request_3 <- getBM(attributes=c("ensembl_gene_id","chromosome_name","gene_biotype","mim_gene_accession","phenotype_description"),filters=c("mim_gene_accession"),values=mendelian_omim_genes$mim_number, mart= ensembl)
+
+#query_request_test <- getBM(attributes=c("ensembl_gene_id","chromosome_name","gene_biotype","mim_gene_accession","description", "strand","transcript_length"),filters=c("mim_gene_accession"),values=mendelian_omim_genes$mim_number, mart= ensembl)
+
+```
+
+Observar las proporciones de biotipos encontrados en la búsqueda 
+
+```{r}
+
+biotype_ensg<-as.data.frame(table(query_request_3$gene_biotype))
+
+biotype_ensg
+ggplot(biotype_ensg, aes(x=Var1, y= Freq , fill= Var1)) +
+  geom_bar(stat = "identity")
+```
+
