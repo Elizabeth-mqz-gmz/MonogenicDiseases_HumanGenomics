@@ -1,6 +1,6 @@
 ---
 title: "Proyecto mendelian"
-author: "Alfredo Varela"
+author: "Alfredo Varela Vega","Elizabeth Márquez Gómez"
 date: "5/14/2021"
 output: html_document
 ---
@@ -9,6 +9,8 @@ output: html_document
 library(dplyr)
 library(biomaRt)
 library(ggplot2)
+library(tidyverse)
+library(rentrez)
 ```
 
 
@@ -33,7 +35,7 @@ mendelian_omim_genes<- omim_genes %>%
 # Checking duplicated values from mim id
 head(unique(mendelian_omim_genes$mim_number[duplicated(mendelian_omim_genes$mim_number)]))
 # Checking duplicated diseases
-head(unique(query_request_3$phenotype_description[duplicated(query_request_3$phenotype_description)]))
+# head(unique(query_request_3$phenotype_description[duplicated(query_request_3$phenotype_description)]))
 
 ```
 
@@ -56,24 +58,51 @@ listFilters(ensembl)
 # output attributes i want 
 listAttributes(ensembl)
 
+(list_Attributes<- as.data.frame(listAttributes(ensembl)))
 #query_request_1<- getBM(attributes = c("ensembl_gene_id","chromosome_name","gene_biotype"), filters = c("ensembl_gene_id"),values = mendelian_omim_genes$ensembl_gene_id, mart = ensembl)
 
 #query_request_2 <- getBM(attributes=c("ensembl_gene_id","chromosome_name","gene_biotype","phenotype_description"),filters=c("ensembl_gene_id"),values=mendelian_omim_genes$ensembl_gene_id, mart= ensembl)
 
+# getting biotypes for all our previous omim genes
 query_request_3 <- getBM(attributes=c("ensembl_gene_id","chromosome_name","gene_biotype","mim_gene_accession","phenotype_description"),filters=c("mim_gene_accession"),values=mendelian_omim_genes$mim_number, mart= ensembl)
 
 #query_request_test <- getBM(attributes=c("ensembl_gene_id","chromosome_name","gene_biotype","mim_gene_accession","description", "strand","transcript_length"),filters=c("mim_gene_accession"),values=mendelian_omim_genes$mim_number, mart= ensembl)
 
 ```
 
+Leyendo los datos de la base de datos non-coding [ncVarDB](https://github.com/Gardner-BinfLab/ncVarDB).
+[Artículo de la base de datos](https://academic.oup.com/database/article/doi/10.1093/database/baaa105/6013764)
+
+```{r}
+non_cod_data<- read.table("data/nc_patho_variants/ncVar_pathogenic.tsv", sep ="\t", header = TRUE)
+```
+
+
 Observar las proporciones de biotipos encontrados en la búsqueda 
 
 ```{r}
+# Creating frequency tables and joining theme by rows 
+ensembl_freq<-as.data.frame(table(query_request_3$gene_biotype))
+non_cod_freq<-as.data.frame(table(non_cod_data$mut_position))
+biotype_counts<-rbind(ensembl_freq,non_cod_freq)
 
-biotype_ensg<-as.data.frame(table(query_request_3$gene_biotype))
-
-biotype_ensg
-ggplot(biotype_ensg, aes(x=Var1, y= Freq , fill= Var1)) +
+# Bar plot 
+ggplot(biotype_counts, aes(x=Var1, y= Freq , fill= Var1)) +
   geom_bar(stat = "identity")
+
+omim_genes$phenotypes
+table(query_request_3$phenotype_description)
+table(non_cod_data$phenotype)
 ```
+
+1. Pie de proporciones de biotipos 
+2. Gráfica de barras de non-coding 
+3. Por cromosoma
+2. Por tipo de herencia 
+
+
+# human disease gene ontolgy 
+#https://www.ebi.ac.uk/ols/ontologies/doid
+
+
 
