@@ -1,9 +1,10 @@
 ---
-title: "Proyecto mendelian"
-author: "Alfredo Varela Vega","Elizabeth Márquez Gómez"
+title: "Proyecto final Genómica Humana: Análisis de Mutaciones mendelianas"
 date: "5/14/2021"
 output: html_document
 ---
+
+## Autores: Alfredo Varela Vega, Elizabeth Márquez Gómez, Joshua Rodríguez Vázquez, Omar Daniel López Olmos,
 
 ```{r}
 library(dplyr)
@@ -11,11 +12,14 @@ library(biomaRt)
 library(ggplot2)
 library(tidyverse)
 library(rentrez)
+library(scales)
+library(ggrepel)
+library(RColorBrewer)
 ```
 
 
 
-Leyendo el archivo de omim que contiene los fenotipos e identificadores de ENSEMBL
+### Leyendo el archivo de omim que contiene los fenotipos e identificadores de ENSEMBL
 
 ```{r}
 # Reading the file 
@@ -25,7 +29,7 @@ colnames(omim_genes) <- c("chromosome",	"genomic_position_start", "genomic_posit
 
 ```
 
-Filtar enfermedades mendelianas 
+### Filtar enfermedades mendelianas 
 
 ```{r}
 mendelian_omim_genes<- omim_genes %>%
@@ -33,18 +37,18 @@ mendelian_omim_genes<- omim_genes %>%
    filter(grepl("Autosomal|X-linked|Y-linked", phenotypes))
 
 # Checking duplicated values from mim id
-head(unique(mendelian_omim_genes$mim_number[duplicated(mendelian_omim_genes$mim_number)]))
+#head(unique(mendelian_omim_genes$mim_number[duplicated(mendelian_omim_genes$mim_number)]))
 # Checking duplicated diseases
 # head(unique(query_request_3$phenotype_description[duplicated(query_request_3$phenotype_description)]))
 
 ```
 
-Búsqueda en ENSEMBL por medio del MIM number 
+### Búsqueda en ENSEMBL por medio del MIM number 
 
 ```{r}
 # conncet to genes database
 ensembl <- useEnsembl(biomart = "genes")
-ensembl
+
 
 #	Check available data sets, hsapiens_gene_ensembl corresponde a Human genes (GRCh38.p13)
 datasets <- listDatasets(ensembl)
@@ -54,21 +58,21 @@ head(datasets)
 ensembl <- useDataset(dataset = "hsapiens_gene_ensembl", mart = ensembl)
 
 # filters to apply to my query 
-listFilters(ensembl)
+#listFilters(ensembl)
 # output attributes i want 
-listAttributes(ensembl)
+#listAttributes(ensembl)
 
-(list_Attributes<- as.data.frame(listAttributes(ensembl)))
-#query_request_1<- getBM(attributes = c("ensembl_gene_id","chromosome_name","gene_biotype"), filters = c("ensembl_gene_id"),values = mendelian_omim_genes$ensembl_gene_id, mart = ensembl)
-
-#query_request_2 <- getBM(attributes=c("ensembl_gene_id","chromosome_name","gene_biotype","phenotype_description"),filters=c("ensembl_gene_id"),values=mendelian_omim_genes$ensembl_gene_id, mart= ensembl)
+list_Attributes<- as.data.frame(listAttributes(ensembl))
 
 # getting biotypes for all our previous omim genes
 query_request_3 <- getBM(attributes=c("ensembl_gene_id","chromosome_name","gene_biotype","mim_gene_accession","phenotype_description"),filters=c("mim_gene_accession"),values=mendelian_omim_genes$mim_number, mart= ensembl)
 
-#query_request_test <- getBM(attributes=c("ensembl_gene_id","chromosome_name","gene_biotype","mim_gene_accession","description", "strand","transcript_length"),filters=c("mim_gene_accession"),values=mendelian_omim_genes$mim_number, mart= ensembl)
-
+# Filtering only for correctly annotated chromosomes from 1 to 21, X and Y
+query_request<- query_request_3 %>% 
+  filter(chromosome_name %in% c(1:21)| chromosome_name == c("X")| chromosome_name == c("Y")) 
 ```
+
+### Datos non coding 
 
 Leyendo los datos de la base de datos non-coding [ncVarDB](https://github.com/Gardner-BinfLab/ncVarDB).
 [Artículo de la base de datos](https://academic.oup.com/database/article/doi/10.1093/database/baaa105/6013764)
@@ -78,31 +82,175 @@ non_cod_data<- read.table("data/nc_patho_variants/ncVar_pathogenic.tsv", sep ="\
 ```
 
 
-Observar las proporciones de biotipos encontrados en la búsqueda 
+#### 1. Pie de proporciones de biotipos de mutación 
 
 ```{r}
 # Creating frequency tables and joining theme by rows 
-ensembl_freq<-as.data.frame(table(query_request_3$gene_biotype))
+ensembl_freq<-as.data.frame(table(query_request$gene_biotype))
 non_cod_freq<-as.data.frame(table(non_cod_data$mut_position))
 biotype_counts<-rbind(ensembl_freq,non_cod_freq)
 
-# Bar plot 
-ggplot(biotype_counts, aes(x=Var1, y= Freq , fill= Var1)) +
-  geom_bar(stat = "identity")
+biotype_counts
 
-omim_genes$phenotypes
-table(query_request_3$phenotype_description)
-table(non_cod_data$phenotype)
+# Biotype Pie chart 
+#png("./results/mendelian_biotype_pie.png", width = 4, height = 4, units = 'in', res = 300)
+ggplot(biotype_counts, aes(x ="", y = Freq, fill = Var1)) + 
+  geom_bar(stat = "identity") + 
+  coord_polar("y", start = 0) + 
+  theme(axis.text = element_blank(), 
+        axis.ticks = element_blank(), 
+        panel.grid = element_blank()) + 
+  labs(title = "Proporciones de biotipos en mutaciones Mendelianas", x= "", y="") + 
+  scale_fill_brewer(name = "Posición de la mutación", palette = "Paired")
+#dev.off()
 ```
 
-1. Pie de proporciones de biotipos 
-2. Gráfica de barras de non-coding 
-3. Por cromosoma
-2. Por tipo de herencia 
+
+#### 2. Gráfica de barras de non-coding 
+
+```{r}
+# Using all biotypes but protein coding 
+biotype_counts_no_prot<-data.frame(biotype= biotype_counts$Var1[biotype_counts$Var1 != "protein_coding"], frequency = biotype_counts$Freq[biotype_counts$Var1 != "protein_coding" ] )
+
+biotype_counts_no_prot<- biotype_counts_no_prot %>%
+  arrange(desc(frequency))
+# Non coding bar plot 
+#png("./results/no_prot_mendelian_biotype_bar_plot.png", width = 4, height = 4, units = 'in', res = 300)
+ggplot(as.data.frame(biotype_counts_no_prot), aes(x = reorder(biotype,frequency), y = frequency , fill= biotype)) +
+  geom_bar(stat = "identity") + 
+  coord_flip() + 
+  labs(title = "Posiciones de las mutaciones en enfermedades mendelianas", x= "Posición", y = "Frecuencia") + 
+  geom_label(label=biotype_counts_no_prot$frequency) + 
+  scale_fill_brewer(palette = "Paired") +
+  theme_classic() + 
+  theme(legend.position = "none")
+#dev.off()
+
+```
+
+#### 3. Mutaciones por cromosoma
+
+```{r}
+# Creating the chromosome counts data frame
+non_cod_chr_count<-as.data.frame(table(non_cod_data$chr))
+omim_chr_count<-as.data.frame(table(query_request$chromosome_name))
+# Merging the omim and the ncVarDB data frames
+chr_merged<-merge(non_cod_chr_count, omim_chr_count, by.x ="Var1", by.y = "Var1", all.x = TRUE, all.y = TRUE)
+#Change column names
+colnames(chr_merged)<- c("chromosome", "Count_ncVarDB","Count_OMIM")
+# Changing Na's for 0
+chr_merged[is.na(chr_merged)] <- 0
+
+# Create total count of mutations
+chr_merged<- chr_merged %>%
+  mutate(total_mutations = Count_ncVarDB + Count_OMIM) %>%
+   arrange(desc(total_mutations))
+
+n_colors<- length(chr_merged$chromosome)
+mycolors <- colorRampPalette(brewer.pal(12, "Paired"))
 
 
-# human disease gene ontolgy 
-#https://www.ebi.ac.uk/ols/ontologies/doid
+#png("./results/mutations_per_chromosome_bar_plot.png", width = 4, height = 4, units = 'in', res = 300)
+ggplot(chr_merged, aes(x =reorder(chromosome,total_mutations) , y = total_mutations, fill = chromosome))+
+  geom_bar(stat="identity") + 
+  labs(title="Frecuencia de mutaciones por cromosoma", x= "Cromosoma", y = "Frecuencia") + 
+  geom_label(label=chr_merged$total_mutations) +
+  theme_classic() + 
+  theme(legend.position = "none") +
+  coord_flip() + 
+  scale_fill_manual(values= mycolors(n_colors))
+#dev.off
+```
+
+
+#### 4. Por tipo de herencia y sitio codificante o no codificante
+
+```{r}
+# Autosomal dominant from ncVarDB
+non_cod_auto_dom<- non_cod_data %>%
+  filter(grepl("Autosomal dominant", phenotype, ignore.case = TRUE)) %>%
+  dplyr::select(phenotype) %>%
+  mutate(inheritance = c("autosomal dominant"), 
+         type = c("non-coding"))
+# Autosomal recessive from ncVarDB
+non_cod_auto_rec<- non_cod_data %>%
+  filter(grepl("Autosomal recessive", phenotype, ignore.case = TRUE)) %>%
+  dplyr::select(phenotype) %>%
+  mutate(inheritance = c("autosomal recessive"), 
+         type = c("non-coding"))
+
+# there are no x linked dominants in non_cod_data so only x-linked recessive form ncVarDB neither Y-linked
+non_cod_x_rec<- non_cod_data %>%
+  filter(grepl("X-linked recessive", phenotype, ignore.case = TRUE)) %>%
+  dplyr::select(phenotype) %>%
+  mutate(inheritance = c("x-linked recessive"), 
+         type = c("non-coding"))
+
+# omim autosomal dominant 
+omim_auto_dom<- mendelian_omim_genes %>%
+  filter(grepl("Autosomal dominant", phenotypes, ignore.case = TRUE)) %>%
+  dplyr::select(phenotypes) %>%
+  mutate(inheritance = c("autosomal dominant"), 
+         type = c("coding"))
+# omim autosomal recessive
+omim_auto_rec<- mendelian_omim_genes %>%
+  filter(grepl("Autosomal recessive", phenotypes, ignore.case = TRUE)) %>%
+  dplyr::select(phenotypes) %>%
+  mutate(inheritance = c("autosomal recessive"), 
+         type = c("coding"))
+# omim X-linked dominant 
+omim_x_linked_dom<- mendelian_omim_genes %>%
+  filter(grepl("X-linked dominant", phenotypes, ignore.case = TRUE)) %>%
+  dplyr::select(phenotypes) %>%
+  mutate(inheritance = c("x-linked dominant"), 
+         type = c("coding"))
+# omim X-linked recessive 
+omim_x_linked_rec<- mendelian_omim_genes %>%
+  filter(grepl("X-linked recessive", phenotypes, ignore.case = TRUE)) %>%
+  dplyr::select(phenotypes) %>%
+  mutate(inheritance = c("x-linked recessive"), 
+         type = c("coding"))
+# omim Y-linked because no distinction dominant or recessive 
+omim_y_linked <- mendelian_omim_genes %>%
+  filter(grepl("Y-linked", phenotypes, ignore.case = TRUE)) %>%
+  dplyr::select(phenotypes) %>%
+  mutate(inheritance = c("Y-linked recessive"), 
+         type = c("coding"))
+
+inheritance_df <- bind_rows(non_cod_auto_dom, non_cod_auto_rec, non_cod_x_rec, omim_auto_dom, omim_auto_rec, omim_x_linked_dom, omim_x_linked_rec, omim_y_linked)
+```
+
+```{r}
+# Creating data frame of counts for inheritance
+inheritance_counts<- as.data.frame(table(inheritance_df$inheritance))
+counts <-as.data.frame(tapply(inheritance_df$inheritance, list(inheritance_df$inheritance, inheritance_df$type), table))
+
+# Adding receptor names columns 
+counts$inheritance<-rownames(counts)
+
+# Change to long format 
+counts_long <- reshape(counts, 
+                       direction = "long", 
+                       varying = list(names(counts)[1:2]),
+                       v.names = "Counts", 
+                       idvar = "inheritance", 
+                       timevar = "Status",
+                       times=c("coding","non-coding"))
+
+
+# Replace NA with 0 
+counts_long[is.na(counts_long)] <- 0
+counts_long
+
+#png("./results/inheritance_bar_plot.png", width = 4, height = 4, units = 'in', res = 300)
+ggplot(counts_long, aes(x = inheritance , y = Counts, fill = Status))+
+  geom_bar(stat="identity") + 
+  labs(title="Tipo de herencia de las mutaciones", x= "Herencia", y = "Frecuencia") + 
+  theme_classic() + 
+  coord_flip() + 
+  scale_fill_brewer(palette = "Paired")
+#dev.off
+```
 
 
 
