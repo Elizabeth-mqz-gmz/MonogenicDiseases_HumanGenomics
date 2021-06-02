@@ -1,10 +1,22 @@
 ---
 title: "Proyecto final Genómica Humana: Análisis de Mutaciones mendelianas"
-date: "5/14/2021"
-output: html_document
+date: "7/06/2021"
+author: "Alfredo Varela Vega, Elizabeth Márquez Gómez, Joshua Rodríguez Vázquez, Omar Daniel López Olmos"
+output: 
+  html_document:
+    df_print: paged
+    code_folding: show
+    self_contained: yes
+    theme: yeti
+    highlight: haddock
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: "3"
 ---
 
-## Autores: Alfredo Varela Vega, Elizabeth Márquez Gómez, Joshua Rodríguez Vázquez, Omar Daniel López Olmos,
 
 ```{r}
 library(dplyr)
@@ -19,7 +31,7 @@ library(RColorBrewer)
 
 
 
-### Leyendo el archivo de omim que contiene los fenotipos e identificadores de ENSEMBL
+### Leer el archivo de [OMIM](https://www.omim.org) que contiene los fenotipos e identificadores de ENSEMBL
 
 ```{r}
 # Reading the file 
@@ -27,23 +39,24 @@ omim_genes<- read.table("data/genemap2.txt", sep = "\t", header= FALSE, fill =TR
 # Creating the header 
 colnames(omim_genes) <- c("chromosome",	"genomic_position_start", "genomic_position_end", "cyto_location","computed_cyto_location", "mim_number","gene_symbols","gene_name","approved_symbol","gene_id","ensembl_gene_id","comments","phenotypes","mouse_geneSymbol/ID")
 
+head(omim_genes)
 ```
 
-### Filtar enfermedades mendelianas 
+### Filtar enfermedades mendelianas (autosómico dominante, autosómico recesivo, X-linked y Y-linked)
 
 ```{r}
 mendelian_omim_genes<- omim_genes %>%
   # Looking for autosomal dominant, autosomal recessive, X-linked dominaant
-   filter(grepl("Autosomal|X-linked|Y-linked", phenotypes))
+   filter(grepl("Autosomal|X-linked|Y-linked", phenotypes, ignore.case = TRUE))
 
 # Checking duplicated values from mim id
 #head(unique(mendelian_omim_genes$mim_number[duplicated(mendelian_omim_genes$mim_number)]))
 # Checking duplicated diseases
 # head(unique(query_request_3$phenotype_description[duplicated(query_request_3$phenotype_description)]))
-
+head(mendelian_omim_genes)
 ```
 
-### Búsqueda en ENSEMBL por medio del MIM number 
+### Búsqueda en biomart de ENSEMBL por medio del MIM number para anotar la posición los loci en genoma de [homo sapiens](https://www.ensembl.org/Homo_sapiens/Info/Index) 
 
 ```{r}
 # conncet to genes database
@@ -57,6 +70,7 @@ head(datasets)
 # accesing homo sapines genes
 ensembl <- useDataset(dataset = "hsapiens_gene_ensembl", mart = ensembl)
 
+ensembl
 # filters to apply to my query 
 #listFilters(ensembl)
 # output attributes i want 
@@ -66,21 +80,26 @@ list_Attributes<- as.data.frame(listAttributes(ensembl))
 
 # getting biotypes for all our previous omim genes
 query_request_3 <- getBM(attributes=c("ensembl_gene_id","chromosome_name","gene_biotype","mim_gene_accession","phenotype_description"),filters=c("mim_gene_accession"),values=mendelian_omim_genes$mim_number, mart= ensembl)
-
+cat("Obtener los biotipos para los genes obtenidos de OMIM: \n")
+head(query_request_3)
 # Filtering only for correctly annotated chromosomes from 1 to 21, X and Y
 query_request<- query_request_3 %>% 
   filter(chromosome_name %in% c(1:21)| chromosome_name == c("X")| chromosome_name == c("Y")) 
+cat("Filtrado por cromosoma: \n")
+head(query_request)
 ```
 
 ### Datos non coding 
 
-Leyendo los datos de la base de datos non-coding [ncVarDB](https://github.com/Gardner-BinfLab/ncVarDB).
-[Artículo de la base de datos](https://academic.oup.com/database/article/doi/10.1093/database/baaa105/6013764)
+Leyendo los datos de la [base de datos non-coding](https://github.com/Gardner-BinfLab/ncVarDB).
+[ncVarDB](https://academic.oup.com/database/article/doi/10.1093/database/baaa105/6013764)
 
 ```{r}
 non_cod_data<- read.table("data/nc_patho_variants/ncVar_pathogenic.tsv", sep ="\t", header = TRUE)
+head(non_cod_data)
 ```
 
+### Visualización de los resultados conjuntos de ncVarDB y OMIM
 
 #### 1. Pie de proporciones de biotipos de mutación 
 
@@ -130,6 +149,8 @@ ggplot(as.data.frame(biotype_counts_no_prot), aes(x = reorder(biotype,frequency)
 
 #### 3. Mutaciones por cromosoma
 
+No todas las mutaciones tenían correcta la anotación del cromosoma al que correspondían por lo tanto solo se graficaron los que contenían la anotación correcta. la suma total de observaciones es menor a la de las visualizaciones por localización de la mutación debido a lo anterior. 
+
 ```{r}
 # Creating the chromosome counts data frame
 non_cod_chr_count<-as.data.frame(table(non_cod_data$chr))
@@ -164,6 +185,8 @@ ggplot(chr_merged, aes(x =reorder(chromosome,total_mutations) , y = total_mutati
 
 
 #### 4. Por tipo de herencia y sitio codificante o no codificante
+
+El tipo de herencia se extrajo en las mutaciones que lo contenían. Muchas de las mutaciones que caen en sitios no codificantes carecen de la anotación correcta del tipo de herencia. Por ello  solo se graficaron los que contenían la anotación correcta de ambas variables. La suma total de observaciones es menor a la de las visualizaciones por localización de la mutación debido a lo anterior. 
 
 ```{r}
 # Autosomal dominant from ncVarDB
