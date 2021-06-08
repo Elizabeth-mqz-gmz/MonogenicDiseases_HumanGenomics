@@ -84,9 +84,10 @@ cat("Obtener los biotipos para los genes obtenidos de OMIM: \n")
 head(query_request_3)
 # Filtering only for correctly annotated chromosomes from 1 to 21, X and Y
 query_request<- query_request_3 %>% 
-  filter(chromosome_name %in% c(1:21)| chromosome_name == c("X")| chromosome_name == c("Y")) 
+  filter(chromosome_name %in% c(1:22)| chromosome_name == c("X")| chromosome_name == c("Y")) 
 cat("Filtrado por cromosoma: \n")
 head(query_request)
+
 ```
 
 ### Datos non coding 
